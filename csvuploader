@@ -1,0 +1,122 @@
+const {BigQuery} = require('@google-cloud/bigquery');
+const {Storage} = require('@google-cloud/storage');
+
+const date = new Date();
+const day = date.getDate();
+const month = date.getMonth()+1;
+const hour =date.getHours();
+//var csvName= 'csv_store/'+day+'_'+month+':'+hour+'-csv_store.csv'
+var csvName= 'csv_store/10_3:11-csv_store.csv'
+
+const projectId = 'csvuploadstore';   
+const dataset = 'csv_dataset';
+const tableName = day+'_'+month+'_csv_table';
+const bucketName = 'csvupload1-bucket';
+
+const options = {
+  schema: 'ID_resa:String,Nom:String,Prenom:String,Extrait_du_mail:String,Date_resa:DATE,Code_arif:String,Date_de_la_resa:DATE,Statut:String,Origine:String,Langue:String,SOB:String,Iata:String,ID_hotel:String,Date_de_debut_de_sejour:DATE,Date_de_fin_de_sejour:DATE,amount_after_taxEUR:FLOAT64,amount_after_taxUSD:FLOAT64,Num_rewards:String,Num_resa:String'
+};
+
+//Initialize bigquery object
+const bigQuery = new BigQuery({
+    projectId: projectId
+});
+
+//Initialize cloud storage object
+const storage = new Storage({
+      projectId: projectId
+}).bucket(bucketName);
+const fs = require('fs');
+
+exports.CSV_UPLOAD_STORE = async (data, context) => {
+  
+  //var fileName = data.name;
+  // basic check that this is a *.csv file, etc...
+  //if (!fileName.endsWith(".csv")) {
+    //console.log("Not a .csv file, ignoring.");
+    //return;
+
+  readCSVContent();
+
+  //ftpUpload();
+   
+   context.send('data stored'); 
+  }
+    //send the raw hit recieved from GTM to Bigquery
+  function pushBqData(hit) {
+    console.log("hit string:",hit)
+    bigQuery
+        .dataset(dataset)
+        .table(tableName)
+        .insert(hit)
+        .then((data) => console.log("data inserted to big query ", data))
+        .catch(err => {
+          
+          //in case of an error we will store the hit received in cloud storage.
+              console.log("Error: can't insert ",err);
+              //createFile(err, hit);
+                    })
+     }
+  
+  //funciton to store hit to cloud bucket.
+function readCSVContent() {
+
+const csv = require('csv-parser');
+const csv2=require('csvtojson');
+const results = [];
+//const fs = require('fs');
+var archivo = storage.file(csvName).createReadStream()
+.pipe(csv({ separator: ',' }))
+  .on('data', (data) => results.push(data))
+  .on('end', () => {
+    console.log(results);
+    createTable(results);
+  });
+  }
+
+async function ftpUpload(){
+  
+  const ftp = require("basic-ftp");
+  const client = new ftp.Client();  
+  client.ftp.verbose = true;
+
+  try {
+        await client.access({
+            host: "37.187.132.107",
+            user: "ftp-export",
+            password: "Ef7k4u!dxv5KQpxq",
+            port:21,
+            secure: false
+        })
+        console.log(await client.list())
+        //await client.uploadFrom("README.md", "README_FTP.md")
+        await client.downloadTo( storage.file(csvName).createWriteStream(),"type_resa.csv");
+        //client.trackProgress(info => console.log(info.bytesOverall));
+        //client.trackProgress();
+    }
+    catch(err) {
+        console.log(err)
+    }
+    client.close();
+    readCSVContent()
+}
+
+//create a table if it not exist
+function createTable(results){
+    const table1 = bigQuery.dataset(dataset).table(tableName);
+    table1.exists().then((data) => {
+       const exists = data[0];
+       console.log('table existe :',exists);
+      if(exists===true){
+         pushBqData(results);
+         console.log('table existe ok');
+      }
+      else{
+        console.log('table existe nok');
+        bigQuery.dataset(dataset).createTable(tableName, options).then((data) => {
+          pushBqData(results);
+        });
+      
+      }
+    });
+}
