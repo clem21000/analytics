@@ -82,9 +82,9 @@ async function ftpUpload(){
 
   try {
         await client.access({
-            host: "37.187.132.107",
-            user: "ftp-export",
-            password: "Ef7k4u!dxv5KQpxq",
+            host: "",
+            user: "",
+            password: "",
             port:21,
             secure: false
         })
